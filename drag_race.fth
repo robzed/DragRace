@@ -19,6 +19,9 @@
 \ ==========================================================
 marker -run
 
+: scan_ADCs
+;
+
 0 constant BUTTON_UP
 1 constant BUTTON_DOWN
 
@@ -26,8 +29,8 @@ marker -run
     0 \ debounce count
     begin
         scan_ADCs
-        adc_button @
-        button pin@
+        \ adc_button @
+        \ button pin@
         5 ms \ debounce
     dup 10 = until
 ;
@@ -82,7 +85,7 @@ variable steering_output
   \ check for either sensor to be triggered
   begin 
     scan_ADCs
-    left sensor right sensor or not
+    left sensor right sensor or 0=
   while 
     250 LED_flash
   repeat
@@ -94,13 +97,13 @@ variable steering_output
   while
     100 LED_flash
   repeat
-
+  
   
   LED low
   0 current_speed !
   begin 
     scan_ADCs
-    left sensor right sensor or not
+    left sensor right sensor or 0=
     \ while we are accelerating we ignore the left and right sensors
     \ so we don't get triggered while crossing the start line
     top_speed and
