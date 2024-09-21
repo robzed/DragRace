@@ -29,6 +29,14 @@ PORTB 4 defPIN: IRLED
 
 ram
 
+: toggle  ( pinmask portadr -- )
+  2dup mtst
+  if
+    mclr
+  else
+    mset
+  then
+;
 
 : ir_on ( -- )
   IRLED high
