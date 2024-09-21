@@ -19,7 +19,154 @@
 \ ==========================================================
 marker -run
 
+flash
+\ left green LED is LED5 and is on D11 = PB3
+PORTB 3 defPIN: LLED
+\ right yellow LED is LED4 and is on D6 = PD6
+PORTD 6 defPIN: RLED
+\ Three three IR LEDs are on D12 = PB4
+PORTB 4 defPIN: IRLED
+
+ram
+
+
+: ir_on ( -- )
+  IRLED high
+;
+
+: ir_off ( -- )
+  IRLED low
+;
+
+: init.ports2 ( -- )
+  init.ports
+  LLED output
+  LLED low
+  RLED output
+  RLED low
+
+  IRLED output
+  IRLED low
+;
+
+variable mark_left
+variable mark_right
+variable left_side
+variable right_side
+variable pos_offset
+variable sw_but
+variable bat_mV
+
+\ switch decode
+\ levels are: 
+\   251 = button pressed
+\   163 = no switches, no buttons
+
+\   163 = 1_ 2_ 3_ 4_ (all off)
+\   160 = 1_ 2_ 3_ 4^ (4 on)
+\   156 = 1_ 2_ 3^ 4_ (3 on)
+\   152 = 1_ 2_ 3^ 4^ (1 on)
+\   146 = 1_ 2^ 3_ 4_ (2 on)
+\   141 = 1_ 2^ 3_ 4^ (1 on)
+\   135 = 1_ 2^ 3^ 4_ (2+3 on)
+\   129 = 1_ 2^ 3^ 4^ (1 on)
+\   115 = 1^ 2_ 3_ 4_ (1 on)
+\   108 = 1^ 2_ 3_ 4^ (1 on)
+\    97 = 1^ 2_ 3^ 4_ (1+3 on)
+\    87 = 1^ 2_ 3^ 4^ (1 on)
+\    69 = 1^ 2^ 3_ 4_ (1+2 on)
+\    54 = 1^ 2^ 3_ 4^ (1 on)
+\    33 = 1^ 2^ 3^ 4_ (1+2+3 on) (or 34)
+\    13 = 1^ 2^ 3^ 4^ (all on)
+
+flash
+create swtable 
+  207 c, 162 c, 158 c, 154 c, 
+  149 c, 144 c, 138 c, 132 c, 
+  122 c, 112 c, 103 c, 92 c, 
+  78 c, 61 c, 43 c, 23 c, 
+  -1 c,
+ram
+
+\ sw returns -1 for button pressed, or 0-15 for switch position
+\ sw is 0 for all switches off, 15 for all switches on
+\ sw is 1 for switch 4 on, 2 for switch 3 on, 4 for switch 2 on, 8 for switch 1 on
+\ i.e. value reads like binary of the switch
+: sw ( -- n )
+  swtable
+  begin 
+    dup c@ sw_but @ 
+    > while
+    1+
+  repeat
+  swtable -
+  1-
+  dup 16 = if 1- then
+;
+
+: scan_sensor ( ch -- n )
+  dup analogRead8
+  ir_on
+  swap analogRead8
+  ir_off
+  ( dark light ... light is smaller than dark )
+  -
+;
+
+: um*256/ ( n1 n2 -- n3 )
+  um* 8 lshift swap 8 rshift +
+;
+
+
 : scan_ADCs
+  3 scan_sensor mark_left !
+  2 scan_sensor left_side !
+  1 scan_sensor right_side !
+  0 scan_sensor mark_right !
+  \ work out a left side vs. right side shift
+  left_side @ right_side @ - pos_offset !
+
+  6 analogRead8 sw_but !
+  7 analogRead8 
+  \ 255 = 5v at input. The potential divider is /2
+  \ to get to voltage in mV
+  \ (ADC / 255) * 5000 * 2
+  \ we approximate 255 to 256
+  10000 um*256/ bat_mV !
+;
+
+: rawread2 
+0 analogRead8 . 
+1 analogRead8 . 
+2 analogRead8 . 
+3 analogRead8 . 
+ir_on 0 analogRead8 .
+1 analogRead8 . 
+2 analogRead8 . 
+3 analogRead8 . 
+ir_off
+; 
+
+: .sens ( -- )
+  ." << " left_side @ . ."  >> " right_side @ . 
+  ."  L " mark_left @ . ."  R " mark_right @ .
+  ." POS " pos_offset @ . 
+  ."  SW " sw_but @ . ." ["  sw . ." ]" 
+  ." V " bat_mV @ .
+  ."    | " rawread2    
+  cr
+;
+
+: WatchSens ( -- ) 
+  init.ports2
+  analog.init
+
+  begin
+    scan_ADCs
+    .sens
+    500 ms
+  key? until
+  key drop
 ;
 
 0 constant BUTTON_UP
@@ -53,9 +200,15 @@ variable steering_output
   true
 ;
 
+: do_acceleration
+
+;
+
 : do_steering
 ;
 
+: set_motors
+;
 
 \ ==========================================================
 \ Main loop
@@ -75,7 +228,9 @@ variable steering_output
 
 
 : 1run
-  init.ports
+  init.ports2
+  analog.init
+
   LED low
 
   BUTTON_UP wait_button
@@ -108,7 +263,9 @@ variable steering_output
     \ so we don't get triggered while crossing the start line
     top_speed and
   while
+    do_acceleration
     do_steering
+    set_motors
   repeat
 
   \ run done  - stop

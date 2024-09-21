@@ -133,15 +133,19 @@ marker -ADCBase
 hex
 7e constant DIDR0   \ digital input disable
 7c constant ADMUX
-7b constant ADCSRB  \ defs to free running, no mux enable
+7b constant ADCSRB  \ defaults to free running, no mux enable
 7a constant ADCSRA  \ 
 79 constant ADCH    \ analogue reading high byte
 78 constant ADCL    \ analogue reading low byte
+64 constant PRR     \ power reduction register
 
 20 constant ADLAR   \ left shift result (for easy 8 bit)
 40 ADLAR + constant _ADMUX  \ 40 is Vref=Vcc
 
+
 : analog.init ( -- )
+    80 PRR mclr \ ensure PRR is set to disable for ADC
+
     _ADMUX ADMUX mset
 \ AVR ADC must be clocked at a frequency between 50 and 200kHz. 
 \ So we need to set proper prescaller bits so that the scaled 
