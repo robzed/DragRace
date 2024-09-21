@@ -92,7 +92,7 @@ ram
 \ sw is 0 for all switches off, 15 for all switches on
 \ sw is 1 for switch 4 on, 2 for switch 3 on, 4 for switch 2 on, 8 for switch 1 on
 \ i.e. value reads like binary of the switch
-: sw ( -- n )
+: >sw ( -- n )
   swtable
   begin 
     dup c@ sw_but @ 
@@ -118,15 +118,24 @@ ram
 ;
 
 
-: scan_ADCs
+: scan_IR
   3 scan_sensor mark_left !
   2 scan_sensor left_side !
   1 scan_sensor right_side !
   0 scan_sensor mark_right !
   \ work out a left side vs. right side shift
   left_side @ right_side @ - pos_offset !
-
+;
+: scanbut 
   6 analogRead8 sw_but !
+;
+
+: scan_ADCs
+  scan_IR
+
+  scanbut
+
+  \ read the battery
   7 analogRead8 
   \ 255 = 5v at input. The potential divider is /2
   \ to get to voltage in mV
@@ -136,22 +145,22 @@ ram
 ;
 
 : rawread2 
-0 analogRead8 . 
-1 analogRead8 . 
-2 analogRead8 . 
-3 analogRead8 . 
-ir_on 0 analogRead8 .
-1 analogRead8 . 
-2 analogRead8 . 
-3 analogRead8 . 
-ir_off
+  0 analogRead8 . 
+  1 analogRead8 . 
+  2 analogRead8 . 
+  3 analogRead8 . 
+  ir_on 0 analogRead8 .
+  1 analogRead8 . 
+  2 analogRead8 . 
+  3 analogRead8 . 
+  ir_off
 ; 
 
 : .sens ( -- )
   ." << " left_side @ . ."  >> " right_side @ . 
   ."  L " mark_left @ . ."  R " mark_right @ .
   ." POS " pos_offset @ . 
-  ."  SW " sw_but @ . ." ["  sw . ." ]" 
+  ."  SW " sw_but @ . ." ["  >sw . ." ]" 
   ." V " bat_mV @ .
   ."    | " rawread2    
   cr
@@ -169,22 +178,31 @@ ir_off
   key drop
 ;
 
+: button
+  scanbut
+  >sw -1 =
+;
+
 0 constant BUTTON_UP
-1 constant BUTTON_DOWN
+-1 constant BUTTON_DOWN
 
 : wait_button ( state --)
     0 \ debounce count
     begin
-        scan_ADCs
-        \ adc_button @
-        \ button pin@
         5 ms \ debounce
+        over button = if
+          1+
+        else
+          drop 0
+        then
     dup 10 = until
+    2drop
 ;
 
 : sensor ( selected -- result )
   drop 0
 ;
+
 1 constant left
 2 constant right
 4 constant line
@@ -210,6 +228,27 @@ variable steering_output
 : set_motors
 ;
 
+: wait_mark
+  \ check for either sensor to be triggered
+  begin 
+    scan_IR
+    left sensor right sensor or 0=
+  while 
+    250 LED_flash
+  repeat
+;
+
+: wait_-mark
+    \ wait for sensor to clear
+  begin 
+    scan_IR
+    left sensor right sensor or
+  while
+    100 LED_flash
+  repeat
+;
+
+
 \ ==========================================================
 \ Main loop
 \ ==========================================================
@@ -233,31 +272,23 @@ variable steering_output
 
   LED low
 
+  ." Waiting for button press" cr
+
   BUTTON_UP wait_button
   BUTTON_DOWN wait_button
   BUTTON_UP wait_button
 
-  \ check for either sensor to be triggered
-  begin 
-    scan_ADCs
-    left sensor right sensor or 0=
-  while 
-    250 LED_flash
-  repeat
+  ." Waiting for marker trigger" cr
 
-  \ wait for sensor to clear
-  begin 
-    scan_ADCs
-    left sensor right sensor or
-  while
-    100 LED_flash
-  repeat
-  
-  
+  wait_mark
+  wait_-mark
+
+  ." Run" cr
+
   LED low
   0 current_speed !
   begin 
-    scan_ADCs
+    scan_IR
     left sensor right sensor or 0=
     \ while we are accelerating we ignore the left and right sensors
     \ so we don't get triggered while crossing the start line
