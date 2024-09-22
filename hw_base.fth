@@ -285,6 +285,8 @@ $8a constant OCR1B  \ actually OCR1BL
   0 lmotor!
 ;
 
+\ : mgo dup rmotor! lmotor! ;
+
 
 \ ==========================================================
 \  Robot Configuration
