@@ -198,10 +198,36 @@ ram
   >sw -1 =
 ;
 
+
+variable flash_time
+variable led_last
+
+: LED_flash ( type -- )
+  ticks led_last @ -
+  flash_time @ > if
+    dup 0= if
+      LED toggle
+    else
+      LLED toggle
+      RLED toggle
+    then
+    flash_time @ led_last +!
+  then
+  drop
+;
+
+: flash! ( n-- )
+  flash_time !
+  ticks led_last !
+;
+
+
 0 constant BUTTON_UP
 -1 constant BUTTON_DOWN
 
 : wait_button ( state --)
+    500 flash!
+
     0 \ debounce count
     begin
         5 ms \ debounce
@@ -210,17 +236,20 @@ ram
         else
           drop 0
         then
+        0 LED_flash
+        key? if 2drop quit then
     dup 10 = until
     2drop
 ;
+
 eeprom 128 value llevel ram
 eeprom 128 value rlevel ram
 
-: left* ( selected -- result )
+: left* ( -- result )
   mark_left @ llevel > 
 ;
 
-: right* ( selected -- result )
+: right* ( -- result )
   mark_right @ rlevel > 
 ;
 
@@ -234,31 +263,15 @@ eeprom 128 value rlevel ram
 \ : line* ( selected -- result )
 \ ;
 
-variable flash_time
-variable led_last
-
-: LED_flash ( -- )
-  ticks led_last @ -
-  flash_time @ > if
-    LLED toggle
-    RLED toggle
-    LED toggle
-    flash_time @ led_last +!
-  then
-;
-
-: flash! ( n-- )
-  flash_time !
-  ticks led_last !
-;
-
 
 variable speed
 variable steering
 variable start_time
 
 20 constant MIN_SPEED \ starts going about 25
-200 constant ACCEL_TIME  \ in milliseconds
+\ 200 constant ACCEL_TIME  \ in milliseconds
+eeprom 500 value ACCEL_TIME ram \ in milliseconds
+
 \ so we go from MIN_SPEED to 255 in ACCELERATION_TIME ms
 
 : start_speed ( -- )
@@ -296,12 +309,42 @@ variable start_time
   acc_calc speed !
 ;
 
-: do_steering
-  \ @TODO - PID controller for steering
-  0 steering !
-  \ LLED low
-  \ RLED low
+variable st_time
+
+: init_steer 
+  ticks 5 + st_time !
 ;
+
+: do_steering
+  ticks st_time @ -  \ calculate t
+  0 > if
+    init_steer
+    \ PID controller, with just the proportional term
+    pos_offset @ 2/    \ Pout = Kp e(t) + P0
+    -20 max 20 min steering !
+    steering @ 0< if
+      RLED high
+      LLED low
+    else steering @ 0 > if
+      RLED low
+      LLED high
+    then then
+  then
+;
+
+: steertest
+  init.ports2
+  analog.init
+  init_steer
+  begin
+    scan_IR
+    do_steering
+    pos_offset @ . steering @ . cr
+    333 ms
+  key? until
+  key drop
+;
+
 
 : set_motors
   steering @ 0< if
@@ -320,18 +363,18 @@ variable start_time
     scan_IR
     nomarker*
   while 
-    LED_flash
+    1 LED_flash
   repeat
 ;
 
-: wait_-mark
+: wait_nomark
   \ wait for sensor to clear
   100 flash!
   begin 
     scan_IR
     marker*
   while
-    LED_flash
+    1 LED_flash
   repeat
 ;
 
@@ -357,6 +400,8 @@ variable start_time
   analog.init
   PWM_31250_HZ motor_pwm_freq
 
+  LLED low
+  RLED low
   LED low
 
   ." Waiting for button press" cr
@@ -364,11 +409,13 @@ variable start_time
   BUTTON_UP wait_button
   BUTTON_DOWN wait_button
   BUTTON_UP wait_button
+  key? if exit then
 
   ." Waiting for marker trigger" cr
 
   wait_mark
-  wait_-mark
+  wait_nomark
+  key? if exit then
 
   ." Run" cr
 
@@ -385,6 +432,7 @@ variable start_time
     \ while we are accelerating we ignore the left and right sensors
     \ so we don't get triggered while crossing the start line
     marker* top_speed and \ marker at top speed should end run
+    \ top_speed \ debug line 
     key? or
   until
 
@@ -400,8 +448,15 @@ variable start_time
   key? until
   key drop
   \ 0encoders
+  LLED low
+  RLED low
+  LED low
 ;
 
 
-\ @TODO - how do we learn the sensors? 
+\ @TODO - Fix steering
+\ @TODO - how do we learn the sensor levels? 
 \ @TODO - Fastest and slowest loop times
+\ @TODO - Optimise acceleration time
+
+' run is turnkey
