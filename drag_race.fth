@@ -19,6 +19,8 @@
 \ ==========================================================
 marker -run
 
+: not 0= ;
+
 flash
 \ left green LED is LED5 and is on D11 = PB3
 PORTB 3 defPIN: LLED
@@ -134,15 +136,10 @@ ram
   \ work out a left side vs. right side shift
   left_side @ right_side @ - pos_offset !
 ;
-: scanbut 
+: scansw 
   6 analogRead8 sw_but !
 ;
-
-: scan_ADCs
-  scan_IR
-
-  scanbut
-
+: scanbat
   \ read the battery
   7 analogRead8 
   \ 255 = 5v at input. The potential divider is /2
@@ -150,6 +147,16 @@ ram
   \ (ADC / 255) * 5000 * 2
   \ we approximate 255 to 256
   10000 um*256/ bat_mV !
+;
+: scan_ADCs
+  scan_IR
+  scansw
+  scanbat
+;
+
+: bat 
+  scanbat 
+  bat_mV @ . ." mV" cr 
 ;
 
 : rawread2 
@@ -187,7 +194,7 @@ ram
 ;
 
 : button
-  scanbut
+  scansw
   >sw -1 =
 ;
 
@@ -206,56 +213,127 @@ ram
     dup 10 = until
     2drop
 ;
+eeprom 128 value llevel ram
+eeprom 128 value rlevel ram
 
-: sensor ( selected -- result )
-  drop 0
+: left* ( selected -- result )
+  mark_left @ llevel > 
 ;
 
-1 constant left
-2 constant right
-4 constant line
-
-: LED_flash ( time -- )
-  drop
+: right* ( selected -- result )
+  mark_right @ rlevel > 
 ;
 
-variable current_speed
-variable steering_output
+: marker* ( -- result )
+  left* right* or
+;
+: nomarker* ( -- result )
+  marker* 0=
+;
+
+\ : line* ( selected -- result )
+\ ;
+
+variable flash_time
+variable led_last
+
+: LED_flash ( -- )
+  ticks led_last @ -
+  flash_time @ > if
+    LLED toggle
+    RLED toggle
+    LED toggle
+    flash_time @ led_last +!
+  then
+;
+
+: flash! ( n-- )
+  flash_time !
+  ticks led_last !
+;
+
+
+variable speed
+variable steering
+variable start_time
+
+20 constant MIN_SPEED \ starts going about 25
+200 constant ACCEL_TIME  \ in milliseconds
+\ so we go from MIN_SPEED to 255 in ACCELERATION_TIME ms
+
+: start_speed ( -- )
+  MIN_SPEED speed !
+  ticks start_time !
+;
 
 : top_speed ( -- flag )
-  true
+  speed @ 255 =
 ;
 
-: do_acceleration
+\ Over ACCELERATION_TIME ms we go from MIN to 255
+\ each millisecond we need to add ((255-MIN) / ACCELERATION_TIME) to the speed.
+\
+\ Assume t is (ticks - start_time) in milliseconds
+\ so at time t we have:
+\         speed = MIN + t * ((255-MIN) / ACCELERATION_TIME)
+\ speed = MIN + (t * (255-MIN) / ACCELERATION_TIME)
+: acc_calc ( t -- speed )
+  255 MIN_SPEED - 
+  um*         \ Unsigned 16x16 to 32 bit multiply. ( u1 u2 — ud )
+  ACCEL_TIME
+  \ Unsigned division. ( ud u1 — u.rem u.quot ) 32-bit/16-bit to 16-bit
+  um/mod nip
+  MIN_SPEED +
+;
 
+: do_acceleration ( -- )
+  top_speed if
+    \ already at top speed
+    exit
+  then
+  ticks start_time @ -  \ calculate t
+  ACCEL_TIME min  \ cap at ACCEL_TIME
+  acc_calc speed !
 ;
 
 : do_steering
+  \ @TODO - PID controller for steering
+  0 steering !
+  \ LLED low
+  \ RLED low
 ;
 
 : set_motors
+  steering @ 0< if
+    speed @ steering @ negate - lmotor!
+    speed @ rmotor!
+  else
+    speed @ lmotor!
+    speed @ steering @ negate - rmotor!
+  then
 ;
 
 : wait_mark
   \ check for either sensor to be triggered
+  500 flash!
   begin 
     scan_IR
-    left sensor right sensor or 0=
+    nomarker*
   while 
-    250 LED_flash
+    LED_flash
   repeat
 ;
 
 : wait_-mark
-    \ wait for sensor to clear
+  \ wait for sensor to clear
+  100 flash!
   begin 
     scan_IR
-    left sensor right sensor or
+    marker*
   while
-    100 LED_flash
+    LED_flash
   repeat
 ;
-
 
 \ ==========================================================
 \ Main loop
@@ -277,6 +355,7 @@ variable steering_output
 : 1run
   init.ports2
   analog.init
+  PWM_31250_HZ motor_pwm_freq
 
   LED low
 
@@ -293,22 +372,25 @@ variable steering_output
 
   ." Run" cr
 
-  LED low
-  0 current_speed !
+  LED high
+  LLED low
+  RLED low
+
+  start_speed
   begin 
     scan_IR
-    left sensor right sensor or 0=
-    \ while we are accelerating we ignore the left and right sensors
-    \ so we don't get triggered while crossing the start line
-    top_speed and
-  while
     do_acceleration
     do_steering
     set_motors
-  repeat
+    \ while we are accelerating we ignore the left and right sensors
+    \ so we don't get triggered while crossing the start line
+    marker* top_speed and \ marker at top speed should end run
+    key? or
+  until
 
   \ run done  - stop
   mstop
+  LED high
 ;
 
 : run 
@@ -316,6 +398,10 @@ variable steering_output
   begin
     1run
   key? until
+  key drop
   \ 0encoders
 ;
 
+
+\ @TODO - how do we learn the sensors? 
+\ @TODO - Fastest and slowest loop times
