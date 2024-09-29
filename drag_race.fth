@@ -269,6 +269,8 @@ variable steering
 variable start_time
 
 20 constant MIN_SPEED \ starts going about 25
+eeprom 255 value MAX_SPEED ram  \ pwm value
+
 \ 200 constant ACCEL_TIME  \ in milliseconds
 eeprom 500 value ACCEL_TIME ram \ in milliseconds
 
@@ -280,7 +282,7 @@ eeprom 500 value ACCEL_TIME ram \ in milliseconds
 ;
 
 : top_speed ( -- flag )
-  speed @ 255 =
+  speed @ MAX_SPEED =
 ;
 
 \ Over ACCELERATION_TIME ms we go from MIN to 255
@@ -291,7 +293,7 @@ eeprom 500 value ACCEL_TIME ram \ in milliseconds
 \         speed = MIN + t * ((255-MIN) / ACCELERATION_TIME)
 \ speed = MIN + (t * (255-MIN) / ACCELERATION_TIME)
 : acc_calc ( t -- speed )
-  255 MIN_SPEED - 
+  MAX_SPEED MIN_SPEED - 
   um*         \ Unsigned 16x16 to 32 bit multiply. ( u1 u2 — ud )
   ACCEL_TIME
   \ Unsigned division. ( ud u1 — u.rem u.quot ) 32-bit/16-bit to 16-bit
