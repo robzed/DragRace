@@ -396,6 +396,15 @@ variable st_time
 \ *   Initially just the PID controller in proportional mode only, and see how it goes
 \ * Stop the motors (PWM 0)
 
+variable max_t
+variable loopst
+
+: Xtime
+  ticks dup loopst @  -
+  max_t @ max max_t !
+  loopst !
+;
+
 
 : 1run
   init.ports2
@@ -425,7 +434,9 @@ variable st_time
   LLED low
   RLED low
 
+  0 max_t !
   start_speed
+  ticks loopst !
   begin 
     scan_IR
     do_acceleration
@@ -436,11 +447,13 @@ variable st_time
     marker* top_speed and \ marker at top speed should end run
     \ top_speed \ debug line 
     key? or
+    Xtime
   until
 
   \ run done  - stop
   mstop
   LED high
+  ." Max loop t " max_t @ . cr
 ;
 
 : run 
