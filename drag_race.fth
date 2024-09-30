@@ -128,13 +128,58 @@ ram
 ;
 
 
+\ my blackboard painted board with 19mm white tape
+\ marker left 4 69 
+\ marker right 1 64 
+\ line left 16 103 
+\ line right 2 74 
+
+eeprom
+4 value minML
+69 value maxML
+
+1 value minMR
+64 value maxMR
+
+16 value minLL
+103 value maxLL
+
+2 value minLR
+74 value maxLR
+ram
+
+variable scaleLL
+variable scaleLR
+
+eeprom 30000 value pos_max ram
+
+: setscale
+  \ considered making 30000 into 65536, but if 
+  \ we get a reading bigger than maxLL or maxLR
+  \ then we overflow the 16 bit number. 
+  \ 
+  \ Also pos_offset is signed...
+  pos_max maxLL minLL - 1 max u/ scaleLL !
+  pos_max maxLR minLR - 1 max u/ scaleLR !
+  ." Scale " scaleLL @ . scaleLR @ . cr
+;
+
+: setpos
+  \ work out a left side vs. right side shift
+  left_side @ minLL - 0 max scaleLL @ *
+  right_side @ minLR - 0 max scaleLR @ *
+  ( left_normalised right_normalised )
+  - 
+  pos_offset !
+;
+
+
 : scan_IR
   3 scan_sensor mark_left !
   2 scan_sensor left_side !
   1 scan_sensor right_side !
   0 scan_sensor mark_right !
-  \ work out a left side vs. right side shift
-  left_side @ right_side @ - pos_offset !
+  setpos
 ;
 : scansw 
   6 analogRead8 sw_but !
@@ -184,6 +229,7 @@ ram
 : WatchSens ( -- ) 
   init.ports2
   analog.init
+  setscale
 
   begin
     scan_ADCs
@@ -242,8 +288,8 @@ variable led_last
     2drop
 ;
 
-eeprom 128 value llevel ram
-eeprom 128 value rlevel ram
+eeprom 40 value llevel ram
+eeprom 40 value rlevel ram
 
 : left* ( -- result )
   mark_left @ llevel > 
@@ -317,13 +363,19 @@ variable st_time
   ticks 5 + st_time !
 ;
 
+eeprom
+-100 value minsteer
+100 value maxsteer
+1024 value 1/Kp
+ram
+
 : do_steering
   ticks st_time @ -  \ calculate t
   0 > if
     init_steer
     \ PID controller, with just the proportional term
-    pos_offset @ 2/    \ Pout = Kp e(t) + P0
-    -20 max 20 min steering !
+    pos_offset @ 1/Kp /    \ Pout = Kp e(t) + P0
+    minsteer max maxsteer min steering !
     steering @ 0< if
       RLED high
       LLED low
@@ -338,9 +390,12 @@ variable st_time
   init.ports2
   analog.init
   init_steer
+  setscale
+
   begin
     scan_IR
     do_steering
+    ." (" left_side @ . ." <> " right_side @ . ." )" 
     pos_offset @ . steering @ . cr
     333 ms
   key? until
@@ -350,11 +405,15 @@ variable st_time
 
 : set_motors
   steering @ 0< if
-    speed @ steering @ negate - lmotor!
-    speed @ rmotor!
-  else
+    \ negative is left, so we want to move right 
+    \ which means we slow the right motor
     speed @ lmotor!
-    speed @ steering @ negate - rmotor!
+    speed @ steering @ + rmotor!
+  else
+    \ positive is right, so we want to move left
+    \ which means we slow the left motor
+    speed @ steering @ - lmotor!
+    speed @ rmotor!
   then
 ;
 
@@ -405,24 +464,78 @@ variable loopst
   loopst !
 ;
 
+variable min_mleft
+variable max_mleft
 
-: 1run
-  init.ports2
-  analog.init
-  PWM_31250_HZ motor_pwm_freq
+variable min_mright
+variable max_mright
 
-  LLED low
-  RLED low
-  LED low
+variable min_lleft
+variable max_lleft
 
-  ." Waiting for button press" cr
+variable min_lright
+variable max_lright
 
-  BUTTON_UP wait_button
-  BUTTON_DOWN wait_button
-  BUTTON_UP wait_button
-  key? if exit then
 
-  ." Waiting for marker trigger" cr
+
+: minmax ( min-addr value max-addr -- )
+  2dup @ max swap !
+  ( min-addr value ) 
+  over @ min swap !
+;
+
+: calibrate
+  50 flash!
+  255 min_lleft  ! 0 max_lleft !
+  255 min_lright ! 0 max_lright !
+  255 min_mleft  !  0 max_mleft !
+  255 min_mright !  0 max_mright !
+
+  ." Calibrate" cr
+
+  begin
+    scan_IR
+    min_lleft  left_side  @ max_lleft  minmax
+    min_lright right_side @ max_lright minmax
+    min_mleft  mark_left  @ max_mleft  minmax
+    min_mright mark_right @ max_mright minmax
+    5 ms
+
+    1 LED_flash
+
+    key? 
+    BUTTON_DOWN button =
+    or
+  until
+  key? if
+    key drop
+  else
+    \ print and store min and max
+    ." marker left " min_mleft @ . max_mleft @ . cr
+    ." marker right " min_mright @ . max_mright @ . cr
+    ." line left " min_lleft @ . max_lleft @ . cr
+    ." line right " min_lright @ . max_lright @ . cr
+
+    min_lleft @ to minLL
+    max_lleft @ to maxLL
+    min_lright @ to minLR
+    max_lright @ to maxLR
+    min_mleft @ to minML
+    max_mleft @ to maxML
+    min_mright @ to minMR
+    max_mright @ to maxMR
+
+    \ now set the marker trip levels
+    maxML minML - 2/ to llevel
+    maxMR minMR - 2/ to rlevel
+    ." Marker levels " llevel . rlevel . cr
+    setscale
+  then
+;
+
+: race
+
+  ." RACE: Waiting for marker trigger" cr
 
   wait_mark
   wait_nomark
@@ -433,6 +546,8 @@ variable loopst
   LED high
   LLED low
   RLED low
+
+  setscale
 
   0 max_t !
   start_speed
@@ -454,6 +569,34 @@ variable loopst
   mstop
   LED high
   ." Max loop t " max_t @ . cr
+
+;
+
+
+: 1run
+  init.ports2
+  analog.init
+  PWM_31250_HZ motor_pwm_freq
+
+  setscale
+
+  LLED low
+  RLED low
+  LED low
+
+  ." Waiting for button press" cr
+
+  BUTTON_UP wait_button
+  BUTTON_DOWN wait_button
+  BUTTON_UP wait_button
+  key? if exit then
+
+  >sw 8 = if
+    calibrate
+  then
+  >sw 0 = if
+    race
+  then
 ;
 
 : run 
