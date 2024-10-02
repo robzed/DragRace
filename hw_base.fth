@@ -519,8 +519,8 @@ variable r_oldB
     - DEG/M_DIFF * rot_change !
 
     \ update cumulatives figures
-    my_distance @ fwd_change @  m+ my_distance 2!
-    my_angle @ rot_change @ m+ my_angle 2!
+    my_distance 2@ fwd_change @  m+ my_distance 2!
+    my_angle 2@ rot_change @ m+ my_angle 2!
 ;
 
 : enc_setup
@@ -537,6 +537,7 @@ variable r_oldB
     \ attachInterrupt(digitalPinToInterrupt(ENCODER_LEFT_CLK), callback_left, CHANGE);
     \ attachInterrupt(digitalPinToInterrupt(ENCODER_RIGHT_CLK), callback_right, CHANGE);
     di
+        %00001111 EICRA mclr  \ make sure other bits are clear
         %00000101 EICRA mset \ set interupt triggers (rising or falling edges = CHANGE)
         %00000011 EIMSK mset \ Enable Int0 & Int1
         ['] left_isr $0002 int! \ Int0
