@@ -1,4 +1,6 @@
-\ ukmarsbot_forth
+\ Drag race code for robots based on the ukmarsbot platform
+\ Written in Forth for the ATmega328P
+\
 \ (c) 2022-2024 Peter Probin and Rob Probin 
 \ MIT License, see LICENSE file
 \ 
