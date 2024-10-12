@@ -1,5 +1,5 @@
 \ ukmarsbot_forth
-\ (c) 2022-2024 Rob Probin 
+\ (c) 2022-2024 Peter Probin and Rob Probin 
 \ MIT License, see LICENSE file
 \ 
 \ BRIEF: loads forth files into the robot.
