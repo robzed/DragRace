@@ -368,8 +368,30 @@ variable st_time
 eeprom
 -100 value minsteer
 100 value maxsteer
-1024 value 1/Kp
+256 value 1/Kp
 ram
+
+400 constant arrSize
+create my-array arrSize allot
+variable myOffset
+
+: clrDATA
+  arrSize for $aa my-array r@ + c! next
+  0 myOffset !
+;
+
+: strDATA ( -- )
+  myOffset @ arrSize <> if
+    steering @ myOffset @ my-array + !
+    1 myOffset +!
+  then
+;
+
+: showDATA
+  hex
+  my-array arrSize dump
+  decimal
+;
 
 : do_steering
   ticks st_time @ -  \ calculate t
@@ -385,6 +407,9 @@ ram
       RLED low
       LLED high
     then then
+
+    strDATA
+
   then
 ;
 
@@ -548,6 +573,7 @@ variable max_lright
   LED high
   LLED low
   RLED low
+  clrDATA
 
   setscale
 
@@ -571,7 +597,7 @@ variable max_lright
   mstop
   LED high
   ." Max loop t " max_t @ . cr
-
+  showDATA
 ;
 
 
@@ -596,6 +622,9 @@ variable max_lright
   >sw 8 = if
     calibrate
   then
+  >sw 4 = if
+    steertest
+  then
   >sw 0 = if
     race
   then
@@ -615,7 +644,6 @@ variable max_lright
 
 
 \ @TODO - Fix steering
-\ @TODO - how do we learn the sensor levels? 
 \ @TODO - Fastest and slowest loop times
 \ @TODO - Optimise acceleration time
 

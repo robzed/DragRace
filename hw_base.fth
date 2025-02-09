@@ -336,6 +336,7 @@ decimal
 \ ---------------------------------------------------
 
 \ 500,0 fconstant LOOP_FREQ
+500 constant LOOP_FREQ
 
 \ --------------------------------------------------------------------------------------
 
@@ -393,6 +394,44 @@ MOUSE_RADIUS PI um* 10000 ud/ drop
 \ Based on  ukmars mazerunner core
 \ from ukmarsbot.forth
 
+\    from ATMega328p datasheet section 12:
+\   The ATMega328p can generate interrupt as a result of changes of state on two of its pins:
+\
+\   PD2 for INT0  - Arduino Digital Pin 2
+\   PD3 for INT1  - Arduino Digital Pin 3
+\
+\   The INT0 and INT1 interrupts can be triggered by a falling or rising edge or a low level.
+\   This is set up as indicated in the specification for the External Interrupt Control Register A –
+\   EICRA.
+\
+\   The External Interrupt 0 is activated by the external pin INT0 if the SREG I-flag and the
+\   corresponding interrupt mask are set. The level and edges on the external INT0 pin that activate
+\   the interrupt are defined as
+\
+\   ISC01 ISC00  Description
+\     0     0    Low Level of INT0 generates interrupt
+\     0     1    Logical change of INT0 generates interrupt
+\     1     0    Falling Edge of INT0 generates interrupt
+\     1     1    Rising Edge of INT0 generates interrupt
+\
+\
+\   The External Interrupt 1 is activated by the external pin INT1 if the SREG I-flag and the
+\   corresponding interrupt mask are set. The level and edges on the external INT1 pin that activate
+\   the interrupt are defined in Table 12-1
+\
+\   ISC11 ISC10  Description
+\     0     0    Low Level of INT1 generates interrupt
+\     0     1    Logical change of INT1 generates interrupt
+\     1     0    Falling Edge of INT1 generates interrupt
+\     1     1    Rising Edge of INT1 generates interrupt
+\
+\   To enable these interrupts, bits must be set in the external interrupt mask register EIMSK
+\
+\   EIMSK:INT0 (bit 0) enables the INT0 external interrupt
+\   EIMSK:INT1 (bit 1) enables the INT1 external interrupt
+\
+
+
 \ 0encoders
 \ -encoders
 marker -encoders
@@ -441,7 +480,10 @@ $3d constant EIMSK
 \ left input change - interrupt service routine
 variable l_oldA
 variable l_oldB
+variable lcounter
+
 : left_isr
+    1 lcounter +!
     ENC_LEFT_B pin@
     ENC_LEFT_CLK pin@ over xor \ fix the A-xor-B input to A only.
     2dup
@@ -456,10 +498,13 @@ variable l_oldB
     l_oldB !
 ;i
 
+variable rcounter
+
 \ right input change - interrupt service routine
 variable r_oldA
 variable r_oldB
 : right_isr
+    1 rcounter +!
     ENC_RIGHT_B pin@
     ENC_RIGHT_CLK pin@ over xor \ fix the A-xor-B input to A only.
     2dup
