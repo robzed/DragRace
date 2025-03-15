@@ -77,17 +77,18 @@ variable bat_mV
 \   163 = 1_ 2_ 3_ 4_ (all off)
 \   160 = 1_ 2_ 3_ 4^ (4 on)
 \   156 = 1_ 2_ 3^ 4_ (3 on)
-\   152 = 1_ 2_ 3^ 4^ (1 on)
+\   152 = 1_ 2_ 3^ 4^ (3+4 on)
 \   146 = 1_ 2^ 3_ 4_ (2 on)
-\   141 = 1_ 2^ 3_ 4^ (1 on)
+\   141 = 1_ 2^ 3_ 4^ (2+4 on)
 \   135 = 1_ 2^ 3^ 4_ (2+3 on)
-\   129 = 1_ 2^ 3^ 4^ (1 on)
+\   129 = 1_ 2^ 3^ 4^ (2+3+4 on)
+
 \   115 = 1^ 2_ 3_ 4_ (1 on)
 \   108 = 1^ 2_ 3_ 4^ (1 on)
 \    97 = 1^ 2_ 3^ 4_ (1+3 on)
-\    87 = 1^ 2_ 3^ 4^ (1 on)
+\    87 = 1^ 2_ 3^ 4^ (1+3+4 on)
 \    69 = 1^ 2^ 3_ 4_ (1+2 on)
-\    54 = 1^ 2^ 3_ 4^ (1 on)
+\    54 = 1^ 2^ 3_ 4^ (1+2+4 on)
 \    33 = 1^ 2^ 3^ 4_ (1+2+3 on) (or 34)
 \    13 = 1^ 2^ 3^ 4^ (all on)
 
@@ -372,24 +373,26 @@ eeprom
 ram
 
 400 constant arrSize
-create my-array arrSize allot
+create DBGarray arrSize allot
 variable myOffset
 
 : clrDATA
-  arrSize for $aa my-array r@ + c! next
+  arrSize for $aa DBGarray r@ + c! next
   0 myOffset !
 ;
 
-: strDATA ( -- )
-  myOffset @ arrSize <> if
-    steering @ myOffset @ my-array + !
+: strDATA ( n -- )
+  myOffset @ arrSize < if
+    myOffset @ DBGarray + !
     1 myOffset +!
+  else
+    drop
   then
 ;
 
 : showDATA
   hex
-  my-array arrSize dump
+  DBGarray arrSize dump
   decimal
 ;
 
@@ -408,7 +411,7 @@ variable myOffset
       LLED high
     then then
 
-    strDATA
+    steering @ strDATA
 
   then
 ;
@@ -560,6 +563,18 @@ variable max_lright
   then
 ;
 
+variable runT
+variable batStart
+variable batEnd
+
+: show_run
+  ." Run time " runT @ . cr
+  ." Max loop t " max_t @ . cr
+  ." Bat Start " batStart @ . ." mV" cr 
+  ." Bat End " batEnd @ . ." mV" cr 
+  showDATA
+;
+
 : race
 
   ." RACE: Waiting for marker trigger" cr
@@ -576,15 +591,18 @@ variable max_lright
   clrDATA
 
   setscale
+  scanbat bat_mV @ batStart !
 
   0 max_t !
   start_speed
+  ticks runT !
   ticks loopst !
   begin 
     scan_IR
     do_acceleration
     do_steering
     set_motors
+    speed @ strDATA
     \ while we are accelerating we ignore the left and right sensors
     \ so we don't get triggered while crossing the start line
     marker* top_speed and \ marker at top speed should end run
@@ -593,11 +611,13 @@ variable max_lright
     Xtime
   until
 
+  ticks runT @ - runT !
+  scanbat bat_mV @ batStart !
+
   \ run done  - stop
   mstop
   LED high
-  ." Max loop t " max_t @ . cr
-  showDATA
+  show_run
 ;
 
 
