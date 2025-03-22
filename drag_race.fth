@@ -66,6 +66,7 @@ variable mark_right
 variable left_side
 variable right_side
 variable pos_offset
+variable old_pos_offset
 variable sw_but
 variable bat_mV
 
@@ -156,6 +157,8 @@ variable scaleLR
 
 eeprom 30000 value pos_max ram
 
+variable 1/8_normal
+
 : setscale
   \ considered making 30000 into 65536, but if 
   \ we get a reading bigger than maxLL or maxLR
@@ -165,6 +168,13 @@ eeprom 30000 value pos_max ram
   pos_max maxLL minLL - 1 max u/ scaleLL !
   pos_max maxLR minLR - 1 max u/ scaleLR !
   ." Scale " scaleLL @ . scaleLR @ . cr
+  
+  pos_max 8 / 1/8_normal !
+  ." 1/8"  1/8_normal @ . cr
+;
+
+: <1/8 ( n -- flag )
+  1/8_normal @ <
 ;
 
 : setpos
@@ -172,8 +182,45 @@ eeprom 30000 value pos_max ram
   left_side @ minLL - 0 max scaleLL @ *
   right_side @ minLR - 0 max scaleLR @ *
   ( left_normalised right_normalised )
+  2dup
   - 
+  \ right is positive, left is negative
+  \ we store the difference in pos_offset ... 
   pos_offset !
+  
+  
+  <1/8 if
+    \ right is less than 1/8
+    <1/8 if 
+        \ both left and right is less than 1/8
+        \ we need to use the previous state
+        old_pos_offset @ 0< if
+          \ previous was left
+          pos_max negate pos_offset !
+        else
+          \ previous was right
+          pos_max pos_offset !
+        then
+    else
+      \ only right is less than 1/8
+      \ we assume left - which is negative
+      pos_max negate pos_offset !
+    then
+  else  
+    \ right > 1/8
+    <1/8 if 
+      \ only left is less than 1/8
+      \ right is > 1/8 - so we assume right
+      pos_max pos_offset !
+    else
+      \ both left or right are great than 1/8
+      \ this is in the middle of the tape - and the difference
+      \ will give us a good result
+      \ we can leave pos_offset as is - the difference
+      \ between left and right
+    then
+  then
+  pos_offset @ old_pos_offset !
 ;
 
 
