@@ -407,10 +407,10 @@ eeprom 500 value ACCEL_TIME ram \ in milliseconds
   acc_calc speed !
 ;
 
-variable st_time
+variable time5ms
 
-: init_steer 
-  ticks 5 + st_time !
+: init5ms
+  ticks 5 + time5ms !
 ;
 
 eeprom
@@ -444,30 +444,28 @@ variable myOffset
   decimal
 ;
 
+: 5ms? 
+  ticks time5ms @ -  \ calculate t
+  0 >
+;
+
+
 : do_steering
-  ticks st_time @ -  \ calculate t
-  0 > if
-    init_steer
-    \ PID controller, with just the proportional term
-    pos_offset @ 1/Kp /    \ Pout = Kp e(t) + P0
-    minsteer max maxsteer min steering !
-    steering @ 0< if
-      RLED high
-      LLED low
-    else steering @ 0 > if
-      RLED low
-      LLED high
-    then then
-
-    steering @ strDATA
-
-  then
+  \ PID controller, with just the proportional term
+  pos_offset @ 1/Kp /    \ Pout = Kp e(t) + P0
+  minsteer max maxsteer min steering !
+  steering @ 0< if
+    RLED high
+    LLED low
+  else steering @ 0 > if
+    RLED low
+    LLED high
+  then then
 ;
 
 : steertest
   init.ports2
   analog.init
-  init_steer
   setscale
 
   begin
@@ -623,6 +621,19 @@ variable batEnd
   showDATA
 ;
 
+variable 20msCount
+
+\ count up 5ms ticks to 20ms
+: 20ms? ( -- flag )
+  1 20msCount +!
+  20msCount @ 4 >= if
+    0 20msCount !
+    true
+  else
+    false
+  then
+;
+
 : race
 
   ." RACE: Waiting for marker trigger" cr
@@ -645,12 +656,29 @@ variable batEnd
   start_speed
   ticks runT !
   ticks loopst !
+  init5ms
+  0 20msCount !
+
   begin 
     scan_IR
     do_acceleration
-    do_steering
+
+    \ tasks to do every 5ms
+    5ms? if
+      init5ms
+      \ 5ms tasks
+      do_steering
+
+      20ms? if
+        \ 20ms tasks
+        pos_offset @ strDATA
+        steering @ strDATA
+        speed @ strDATA
+      then
+    then
+
+    \ set motors every loop
     set_motors
-    speed @ strDATA
     \ while we are accelerating we ignore the left and right sensors
     \ so we don't get triggered while crossing the start line
     marker* top_speed and \ marker at top speed should end run
