@@ -1,0 +1,33 @@
+Arduino Nano has a ATMEGA328P with the following memory:
+
+ * 32K bytes of in-system self-programmable flash program memory
+ * 1Kbytes EEPROM
+ * 2Kbytes internal SRAM
+
+Using the FlashForth command `.free` as defined in free.fs in the Flashforth repo, after
+loading all the Drag race code. 
+
+    Flash:16208 bytes
+    Eeprom:980 bytes
+    Ram:1084 bytes 
+
+400 bytes are defined in the 'my-array' used for debugging data.
+
+After empty:
+
+    Flash:23932 bytes
+    Eeprom:1012 bytes
+    Ram:1564
+
+After just hw_base.fth is loaded:
+
+    Flash:20778 bytes
+    Eeprom:1012 bytes
+    Ram:1536 bytes 
+
+After drag_race.fth is loaded:
+
+    Flash:16220 bytes
+    Eeprom:980 bytes
+    Ram:1084 bytes
+
