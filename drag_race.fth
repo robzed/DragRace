@@ -170,7 +170,7 @@ variable 1/8_normal
   ." Scale " scaleLL @ . scaleLR @ . cr
   
   pos_max 8 / 1/8_normal !
-  ." 1/8"  1/8_normal @ . cr
+  ." 1/8 "  1/8_normal @ . cr
 ;
 
 : <1/8 ( n -- flag )
@@ -420,7 +420,8 @@ eeprom
 ram
 
 400 constant arrSize
-create DBGarray arrSize allot
+\ allocate 800 bytes for the debug array
+create DBGarray arrSize 2* allot
 variable myOffset
 
 : clrDATA
@@ -431,7 +432,7 @@ variable myOffset
 : strDATA ( n -- )
   myOffset @ arrSize < if
     myOffset @ DBGarray + !
-    1 myOffset +!
+    2 myOffset +!
   else
     drop
   then
@@ -659,7 +660,7 @@ variable batEnd
   until
 
   ticks runT @ - runT !
-  scanbat bat_mV @ batStart !
+  scanbat bat_mV @ batEnd !
 
   \ run done  - stop
   mstop
@@ -715,3 +716,5 @@ variable batEnd
 \ @TODO - Optimise acceleration time
 
 ' run is turnkey
+
+.free
