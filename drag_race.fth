@@ -446,7 +446,8 @@ variable myOffset
 
 : 5ms? 
   ticks time5ms @ -  \ calculate t
-  0 >
+  0 > 
+  dup if init5ms then
 ;
 
 
@@ -626,11 +627,8 @@ variable 20msCount
 \ count up 5ms ticks to 20ms
 : 20ms? ( -- flag )
   1 20msCount +!
-  20msCount @ 4 >= if
+  20msCount @ 4 >= dup if
     0 20msCount !
-    true
-  else
-    false
   then
 ;
 
@@ -665,7 +663,6 @@ variable 20msCount
 
     \ tasks to do every 5ms
     5ms? if
-      init5ms
       \ 5ms tasks
       do_steering
 
