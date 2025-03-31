@@ -68,7 +68,7 @@ variable right_side
 variable pos_offset
 variable old_pos_offset
 variable sw_but
-variable bat_mV
+variable bat_raw
 
 \ switch decode
 \ levels are: 
@@ -234,15 +234,36 @@ variable 1/8_normal
 : scansw 
   6 analogRead8 sw_but !
 ;
+
 : scanbat
   \ read the battery
-  7 analogRead8 
+  7 analogRead8 bat_raw !
+;
+
+: bat_mV ( -- mV )
   \ 255 = 5v at input. The potential divider is /2
   \ to get to voltage in mV
   \ (ADC / 255) * 5000 * 2
   \ we approximate 255 to 256
-  10000 um*256/ bat_mV !
+  bat_raw @
+  10000 um*256/ 
 ;
+
+: mV>ADC ( mV -- ADC )
+  \ mV = (ADC / 255) * 5000 * 2
+  \ ADC = mV / 10000 * 255
+  \ 
+  \ example 9v = 9000
+  \ ADC = 9000 / 10000 * 255
+  \ ADC = 229.5
+
+  \ Unsigned 16x16 to 32 bit multiply. ( u1 u2 — ud )
+  255 um*
+  \ Unsigned division. ( ud u1 — u.rem u.quot ) 32-bit/16-bit to 16-bit .. Divide ud by u1
+  10000 um/mod nip
+;
+
+
 : scan_ADCs
   scan_IR
   scansw
@@ -251,7 +272,7 @@ variable 1/8_normal
 
 : bat 
   scanbat 
-  bat_mV @ . ." mV" cr 
+  bat_mV . ." mV" cr 
 ;
 
 : rawread2 
@@ -271,8 +292,8 @@ variable 1/8_normal
   ."  L " mark_left @ . ."  R " mark_right @ .
   ." POS " pos_offset @ . 
   ."  SW " sw_but @ . ." ["  >sw . ." ]" 
-  ." V " bat_mV @ .
-  ."    | " rawread2    
+  ." V " bat_mV .
+  ."    | " rawread2
   cr
 ;
 
@@ -397,6 +418,34 @@ eeprom 500 value ACCEL_TIME ram \ in milliseconds
   MIN_SPEED +
 ;
 
+\ 6v is minimum battery voltage we run at!
+
+6000 mV>ADC constant bat_low_ADC
+
+: bat_flash
+  LLED low RLED low
+  begin
+    LED high 100 ms LED low 100 ms
+    LED high 100 ms LED low 100 ms
+    600 ms
+  key? until
+  key drop
+;
+
+variable bat_low_flag
+
+: battery_check ( --  )
+  bat_raw @ bat_low_ADC < if
+    true bat_low_flag !
+
+    \ stop the robot
+    mstop
+    ." *** Bat low" cr
+    bat_flash
+    ." *** Bat low" cr
+  then
+;
+
 : do_acceleration ( -- )
   top_speed if
     \ already at top speed
@@ -479,18 +528,59 @@ variable myOffset
   key drop
 ;
 
+\ we need to scale the speed based on the battery voltage
+variable MinV/NowV
+
+\ we want to calculate the ratio of the minimum voltage to the current voltage
+: CalcPWMScale ( -- )
+  \ we want to scale the PWM so that the robot goes at the same speed at any battery voltage
+  \ we want to scale the PWM so that the robot goes at the same speed at any battery voltage
+  \ if the battery is 6v, then bat_raw = bat_low_ADC
+  \ if the battery is 9v, then bat_raw = 1.5 * bat_low_ADC
+  \ if the battery is 9v then we only want 2/3 of the PWM value
+  \                 (equivalent of 6v / 9v)
+  \ PWM_out = PWM_in * ( bat_low_ADC / bat_raw )
+  \ here we calculate ((bat_low*65536)/current)
+
+  \ um* = Unsigned 16x16 to 32 bit multiply. ( u1 u2 — ud )
+  0 bat_low_ADC \ bat_low_ADC 65536 um*  
+  \ um/mod = Unsigned division. ( ud u1 — u.rem u.quot ) 32-bit/16-bit to 16-bit .. Divide ud by u1 
+  bat_raw @ um/mod nip 
+  
+  MinV/NowV !
+;
+
+\ we scale the PWM drive based on the battery voltage
+\ we want to scale the PWM so that the robot goes at the same speed at any battery voltage
+: scale_PWM ( PWM_in -- PWM_out )
+  \ PWM goes from 0 to 255 (usually not negative for us)
+  \ 
+  \ bat_raw - ADC reading of the battery taken every 20ms
+  \ bat_low_ADC - a voltage relating to 6v
+  \ so if the battery is 6v, then bat_raw = bat_low_ADC
+  \ if the battery is 9v, then bat_raw = 1.5 * bat_low_ADC
+  \ if the battery is 9v then we only want 2/3 of the PWM value
+  \                 (equivalent of 6v / 9v)
+  \
+  \ PWM_out = PWM_in * ( bat_low_ADC / bat_raw )
+  
+  MinV/NowV @
+  \ to avoid a each loop divide, we can multiply by 256 and divide by 256
+  um*   \ Unsigned 16x16 to 32 bit multiply. ( u1 u2 — ud )
+;
+
 
 : set_motors
   steering @ 0< if
     \ negative is left, so we want to move right 
     \ which means we slow the right motor
-    speed @ lmotor!
-    speed @ steering @ + rmotor!
+    speed @              scale_PWM lmotor!
+    speed @ steering @ + scale_PWM rmotor!
   else
     \ positive is right, so we want to move left
     \ which means we slow the left motor
-    speed @ steering @ - lmotor!
-    speed @ rmotor!
+    speed @ steering @ - scale_PWM lmotor!
+    speed @              scale_PWM rmotor!
   then
 ;
 
@@ -610,6 +700,8 @@ variable max_lright
   then
 ;
 
+
+
 variable runT
 variable batStart
 variable batEnd
@@ -622,15 +714,14 @@ variable batEnd
   showDATA
 ;
 
-variable 20msCount
-
+variable 5msPhase
 \ count up 5ms ticks to 20ms
-: 20ms? ( -- flag )
-  1 20msCount +!
-  20msCount @ 4 >= dup if
-    0 20msCount !
-  then
+: Count5ms ( -- )
+  5msPhase @ 1+ 
+  3 and 5msPhase !
 ;
+
+variable cycle_after
 
 : race
 
@@ -648,14 +739,15 @@ variable 20msCount
   clrDATA
 
   setscale
-  scanbat bat_mV @ batStart !
+  scanbat bat_mV batStart !
 
   0 max_t !
   start_speed
   ticks runT !
   ticks loopst !
   init5ms
-  0 20msCount !
+  0 5msPhase !
+  false cycle_after !
 
   begin 
     scan_IR
@@ -663,29 +755,47 @@ variable 20msCount
 
     \ tasks to do every 5ms
     5ms? if
+      Count5ms
       \ 5ms tasks
       do_steering
+      true cycle_after !
+    else
+        \ do this the loop after do_steering
+      cycle_after @ if
+          false cycle_after !
 
-      20ms? if
-        \ 20ms tasks
-        pos_offset @ strDATA
-        steering @ strDATA
-        speed @ strDATA
+          5msPhase 1 = if
+            \ 20ms tasks
+            pos_offset @ strDATA
+            steering @ strDATA
+            speed @ strDATA
+          then
+          5msPhase 2 = if
+            scanbat
+          then
+          5msPhase 3 = if
+            CalcPWMScale
+            battery_check
+          then
       then
     then
 
-    \ set motors every loop
-    set_motors
+    bat_low_flag not if
+      \ set motors every loop
+      set_motors
+    then
+
     \ while we are accelerating we ignore the left and right sensors
     \ so we don't get triggered while crossing the start line
     marker* top_speed and \ marker at top speed should end run
     \ top_speed \ debug line 
     key? or
+    bat_low_flag @ or
     Xtime
   until
 
   ticks runT @ - runT !
-  scanbat bat_mV @ batEnd !
+  scanbat bat_mV batEnd !
 
   \ run done  - stop
   mstop
@@ -707,6 +817,8 @@ variable 20msCount
 
   ." Waiting for button press" cr
 
+
+
   BUTTON_UP wait_button
   BUTTON_DOWN wait_button
   BUTTON_UP wait_button
@@ -724,9 +836,14 @@ variable 20msCount
 ;
 
 : run 
+  false bat_low_flag !
+
   \enc_setup
   begin
-    1run
+    battery_check
+    bat_low_flag not if
+      1run
+    then
   key? until
   key drop
   \ 0encoders
