@@ -16,6 +16,15 @@
 
 \ #include hw_base.fth
 
+\
+\ NOTES: um* is about 7us
+\        um/mod is about 20us
+\ Calculated with a 1000 for next loop
+\  : aaa ticks 1000 for 2 3 4 um/mod 2drop next ticks swap - . ; 
+\ aaa 20  ok<#,ram> 
+\ : bbb ticks 1000 for 3 4 um* 2drop next ticks swap - . ;  
+\ bbb 7  ok<#,ram> 
+
 \ ==========================================================
 \ Stubs for main run loop
 \ ==========================================================
@@ -567,6 +576,7 @@ variable MinV/NowV
   MinV/NowV @
   \ to avoid a each loop divide, we can multiply by 256 and divide by 256
   um*   \ Unsigned 16x16 to 32 bit multiply. ( u1 u2 — ud )
+  nip
 ;
 
 
