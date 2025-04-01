@@ -790,7 +790,7 @@ variable cycle_after
       then
     then
 
-    bat_low_flag not if
+    bat_low_flag @ not if
       \ set motors every loop
       set_motors
     then
@@ -848,11 +848,17 @@ variable cycle_after
 : run 
   false bat_low_flag !
 
+  init.ports2
+  analog.init
+  scanbat 
+
   \enc_setup
   begin
     battery_check
-    bat_low_flag not if
+    bat_low_flag @ not if
       1run
+    else
+      ." <Bat low>" cr
     then
   key? until
   key drop
