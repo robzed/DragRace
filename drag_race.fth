@@ -186,14 +186,18 @@ variable 1/8_normal
   1/8_normal @ <
 ;
 
+variable LNORM
+variable RNORM
+
 : setpos
   \ work out a left side vs. right side shift
   left_side @ minLL - 0 max scaleLL @ *
   right_side @ minLR - 0 max scaleLR @ *
   ( left_normalised right_normalised )
+  2dup RNORM ! LNORM !
   2dup
   - 
-  \ right is positive, left is negative
+  \ mouse right of line is positive, mouse left of line is negative
   \ we store the difference in pos_offset ... 
   pos_offset !
   
@@ -211,16 +215,16 @@ variable 1/8_normal
           pos_max pos_offset !
         then
     else
-      \ only right is less than 1/8
-      \ we assume left - which is negative
-      pos_max negate pos_offset !
+      \ only right is less than 1/8 - which means left sensor is picking up data
+      \ we assume right of line - which is positive
+      pos_max pos_offset !
     then
   else  
     \ right > 1/8
     <1/8 if 
-      \ only left is less than 1/8
-      \ right is > 1/8 - so we assume right
-      pos_max pos_offset !
+      \ only left is less than 1/8 - which means right sensor is picking up data
+      \ right is > 1/8 - so we assume left of line
+      pos_max negate pos_offset !
     else
       \ both left or right are great than 1/8
       \ this is in the middle of the tape - and the difference
@@ -540,7 +544,7 @@ variable myOffset
   begin
     scan_IR
     do_steering
-    ." (" left_side @ . ." <> " right_side @ . ." )" 
+    ." (" left_side @ . LNORM @ . ." <> " right_side @ . RNORM @ . ." )" 
     pos_offset @ . steering @ . cr
     333 ms
   key? until
@@ -880,9 +884,15 @@ variable cycle_after
 ;
 
 
-\ @TODO - Fix steering
 \ @TODO - Fastest and slowest loop times
 \ @TODO - Optimise acceleration time
+\ @TODO - Add slowing down at the end of the run, rather than stopping
+\ @TODO - longer time on start ignore???
+\ @TODO - Does voltage drop at start when motors are at stall? If it recovers
+\         we might be able to increase the voltage. Or seperate battery low
+\         from the battery modulation.
+
+
 
 ' run is turnkey
 
