@@ -347,6 +347,41 @@ variable led_last
   ticks led_last !
 ;
 
+\ 6v is minimum battery voltage we run at!
+
+\ 6000 mV>ADC value bat_low_ADC
+eeprom 5500 mV>ADC value bat_low_ADC ram
+\ use:
+\   5500 mV>ADC to bat_low_ADC
+
+: bat_flash
+  LLED low RLED low
+  begin
+    LED high 100 ms LED low 100 ms
+    LED high 100 ms LED low 100 ms
+    600 ms
+  key? until
+  key drop
+;
+
+variable bat_low_flag
+
+: batcomp ( --  )
+  bat_raw @ bat_low_ADC < if
+    true bat_low_flag !
+
+    \ stop the robot
+    mstop
+    ." *** Bat low" cr
+    bat_flash
+    ." *** Bat low" cr
+  then
+;
+
+: battery_check
+  scanbat
+  batcomp
+;
 
 0 constant BUTTON_UP
 -1 constant BUTTON_DOWN
@@ -356,6 +391,7 @@ variable led_last
 
     0 \ debounce count
     begin
+        battery_check
         5 ms \ debounce
         over button = if
           1+
@@ -427,33 +463,7 @@ eeprom 500 value ACCEL_TIME ram \ in milliseconds
   MIN_SPEED +
 ;
 
-\ 6v is minimum battery voltage we run at!
 
-6000 mV>ADC constant bat_low_ADC
-
-: bat_flash
-  LLED low RLED low
-  begin
-    LED high 100 ms LED low 100 ms
-    LED high 100 ms LED low 100 ms
-    600 ms
-  key? until
-  key drop
-;
-
-variable bat_low_flag
-
-: battery_check ( --  )
-  bat_raw @ bat_low_ADC < if
-    true bat_low_flag !
-
-    \ stop the robot
-    mstop
-    ." *** Bat low" cr
-    bat_flash
-    ." *** Bat low" cr
-  then
-;
 
 : do_acceleration ( -- )
   top_speed if
@@ -598,6 +608,7 @@ variable MinV/NowV
   \ check for either sensor to be triggered
   500 flash!
   begin 
+    battery_check
     scan_IR
     nomarker*
   while 
@@ -609,6 +620,7 @@ variable MinV/NowV
   \ wait for sensor to clear
   100 flash!
   begin 
+    battery_check
     scan_IR
     marker*
   while
@@ -774,18 +786,18 @@ variable cycle_after
       cycle_after @ if
           false cycle_after !
 
-          5msPhase 1 = if
+          5msPhase @ 1 = if
             \ 20ms tasks
             pos_offset @ strDATA
             steering @ strDATA
             speed @ strDATA
           then
-          5msPhase 2 = if
+          5msPhase @ 2 = if
             scanbat
           then
-          5msPhase 3 = if
+          5msPhase @ 3 = if
             CalcPWMScale
-            battery_check
+            batcomp
           then
       then
     then
@@ -850,7 +862,6 @@ variable cycle_after
 
   init.ports2
   analog.init
-  scanbat 
 
   \enc_setup
   begin
